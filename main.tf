@@ -250,6 +250,25 @@ resource "helm_release" "external_secrets" {
 # Helm - Agent (conditional)
 # -----------------------------------------------------------------------------
 
+resource "kubernetes_namespace_v1" "mcd_agent" {
+  count = var.helm.deploy_agent ? 1 : 0
+
+  metadata {
+    name = local.namespace
+
+    labels = {
+      "app.kubernetes.io/managed-by" = "Helm"
+    }
+
+    annotations = {
+      "meta.helm.sh/release-name"      = "mcd-agent"
+      "meta.helm.sh/release-namespace" = local.namespace
+    }
+  }
+
+  depends_on = [google_container_cluster.mcd_agent]
+}
+
 resource "helm_release" "mcd_agent" {
   count            = var.helm.deploy_agent ? 1 : 0
   name             = "mcd-agent"
@@ -257,13 +276,14 @@ resource "helm_release" "mcd_agent" {
   chart            = var.helm.chart_name
   version          = var.helm.chart_version
   namespace        = local.namespace
-  create_namespace = true
+  create_namespace = false
 
   values = [local.helm_values_yaml]
 
   depends_on = [
     google_container_cluster.mcd_agent,
-    helm_release.external_secrets
+    helm_release.external_secrets,
+    kubernetes_namespace_v1.mcd_agent
   ]
 }
 
@@ -279,19 +299,9 @@ locals {
     }
 
     container = {
-      port                 = var.agent.container_port
-      backendServiceUrl    = var.backend_service_url
-      gunicornWorkers      = var.agent.gunicorn_workers
-      gunicornThreads      = var.agent.gunicorn_threads
-      storageBucketName    = local.effective_bucket_name
-      storageType          = "GCS"
-      opsRunnerThreadCount = tostring(var.agent.ops_runner_thread_count)
-      publisherThreadCount = tostring(var.agent.publisher_thread_count)
-    }
-
-    service = {
-      port        = var.agent.service_port
-      annotations = var.helm.service_annotations
+      backendServiceUrl = var.backend_service_url
+      storageBucketName = local.effective_bucket_name
+      storageType       = "GCS"
     }
 
     serviceAccount = {

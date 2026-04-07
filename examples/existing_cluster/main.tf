@@ -15,6 +15,10 @@ module "mcd_on_prem_agent" {
   networking = {
     create_network = false
   }
+
+  helm = {
+    chart_version = "0.0.2"
+  }
 }
 
 output "storage_bucket_name" {

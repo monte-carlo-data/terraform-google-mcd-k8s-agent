@@ -11,6 +11,10 @@ module "mcd_on_prem_agent" {
     existing_network_id    = "projects/my-gcp-project/global/networks/my-vpc"
     existing_subnetwork_id = "projects/my-gcp-project/regions/us-central1/subnetworks/my-subnet"
   }
+
+  helm = {
+    chart_version = "0.0.2"
+  }
 }
 
 output "cluster_endpoint" {

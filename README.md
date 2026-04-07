@@ -4,12 +4,47 @@ This module deploys the [Monte Carlo](https://www.montecarlodata.com/) container
 
 ## Prerequisites
 
-- [Terraform](https://www.terraform.io/downloads.html) >= 1.3
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.9
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install) with [authentication](https://registry.terraform.io/providers/hashicorp/google/latest/docs/guides/getting_started)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) for cluster access
 - A Monte Carlo account with agent credentials (mcd_id and mcd_token)
 
 ## Usage
+
+> **Finding your `backend_service_url`:** Navigate to the [Account Information](https://getmontecarlo.com/account-info#agent-service) page in Monte Carlo. Under the **Agent Service** section, copy the **Public endpoint**. Use this value for the `backend_service_url` variable in the examples below.
+
+> **Finding the latest `chart_version`:** Check the available versions on [Docker Hub](https://hub.docker.com/r/montecarlodata/generic-agent-helm/tags).
+
+For more complete configurations, see the [`examples`](./examples/) directory.
+
+### Agent token secret
+
+You must configure the agent token secret using one of two options:
+
+**Option 1 — Provide credentials (recommended):** The module creates and populates the secret in GCP Secret Manager.
+
+```hcl
+token_credentials = {
+  mcd_id    = "your-mcd-id"
+  mcd_token = "your-mcd-token"
+}
+```
+
+**Option 2 — Use a pre-existing secret:** Point the module to an existing secret in GCP Secret Manager by name. The secret value must be a JSON object with the following format:
+
+```json
+{
+  "mcd_id": "YOUR_MCD_ID",
+  "mcd_token": "YOUR_MCD_TOKEN"
+}
+```
+
+```hcl
+token_secret = {
+  create = false
+  name   = "my-existing-secret-name"
+}
+```
 
 ### Full deployment (new cluster)
 
@@ -19,7 +54,16 @@ module "mcd_agent" {
 
   project_id          = "my-gcp-project"
   location            = "us-central1"
-  backend_service_url = "https://your-instance.getmontecarlo.com"
+  backend_service_url = "<backend_service_url>"
+
+  token_credentials = {
+    mcd_id    = var.mcd_id
+    mcd_token = var.mcd_token
+  }
+
+  helm = {
+    chart_version = "0.0.2"
+  }
 }
 ```
 
@@ -31,7 +75,11 @@ module "mcd_agent" {
 
   project_id          = "my-gcp-project"
   location            = "us-central1"
-  backend_service_url = "https://your-instance.getmontecarlo.com"
+  backend_service_url = "<backend_service_url>"
+
+  helm = {
+    chart_version = "0.0.2"
+  }
 
   networking = {
     create_network         = false
@@ -49,7 +97,11 @@ module "mcd_agent" {
 
   project_id          = "my-gcp-project"
   location            = "us-central1"
-  backend_service_url = "https://your-instance.getmontecarlo.com"
+  backend_service_url = "<backend_service_url>"
+
+  helm = {
+    chart_version = "0.0.2"
+  }
 
   cluster = {
     create                = false
@@ -70,10 +122,11 @@ module "mcd_agent" {
 
   project_id          = "my-gcp-project"
   location            = "us-central1"
-  backend_service_url = "https://your-instance.getmontecarlo.com"
+  backend_service_url = "<backend_service_url>"
 
   helm = {
-    deploy_agent = false
+    chart_version = "0.0.2"
+    deploy_agent  = false
   }
 }
 
@@ -85,15 +138,49 @@ output "helm_values" {
 
 ## After Deployment
 
-1. Update the agent token in GCP Secret Manager:
+Configure kubectl access:
+```bash
+gcloud container clusters get-credentials <cluster_name> --region <location> --project <project_id>
+```
+
+## Troubleshooting
+
+### Checking agent logs
+
+Verify the agent pod is running and check its logs:
+
+```bash
+kubectl get pods -n mcd-agent
+kubectl logs -n mcd-agent -l app=mcd-agent --tail=30
+```
+
+### Reachability test
+
+Run the reachability test to confirm the agent can communicate with the Monte Carlo platform:
+
+```bash
+kubectl exec -n mcd-agent deploy/mcd-agent-deployment -- \
+  curl -s -X POST localhost:8080/api/v1/test/reachability
+```
+
+### Rotating the agent token
+
+1. Update the secret in GCP Secret Manager:
    ```bash
-   echo -n '{"mcd_id":"YOUR_MCD_ID","mcd_token":"YOUR_MCD_TOKEN"}' | \
+   echo -n '{"mcd_id":"NEW_MCD_ID","mcd_token":"NEW_MCD_TOKEN"}' | \
      gcloud secrets versions add mcd-agent-token --data-file=-
    ```
 
-2. Configure kubectl access:
+2. Force sync the Kubernetes secret from ESO:
    ```bash
-   gcloud container clusters get-credentials <cluster_name> --region <location> --project <project_id>
+   kubectl annotate externalsecret -n mcd-agent --all \
+     force-sync=$(date +%s) --overwrite
+   ```
+
+3. Restart the agent services:
+   ```bash
+   kubectl rollout restart deployment mcd-agent-deployment -n mcd-agent
+   kubectl rollout restart daemonset logs-collector metrics-collector -n mcd-agent
    ```
 
 ## Outputs

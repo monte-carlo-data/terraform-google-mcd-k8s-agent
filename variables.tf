@@ -72,13 +72,18 @@ variable "token_secret" {
 }
 
 variable "token_credentials" {
-  description = "MCD agent token credentials. Set to populate the secret at deploy time, or leave empty to set manually later."
+  description = "MCD agent token credentials. Required when token_secret.create is true."
   type = object({
     mcd_id    = optional(string, null)
     mcd_token = optional(string, null)
   })
   sensitive = true
   default   = {}
+
+  validation {
+    condition     = !var.token_secret.create || (var.token_credentials.mcd_id != null && var.token_credentials.mcd_token != null)
+    error_message = "Both mcd_id and mcd_token are required in token_credentials when token_secret.create is true."
+  }
 }
 
 variable "integration_secrets" {
@@ -95,16 +100,9 @@ variable "integration_secrets" {
 variable "agent" {
   description = "Agent container configuration."
   type = object({
-    namespace               = optional(string, "mcd-agent")
-    image                   = optional(string, "montecarlodata/pre-release-agent:latest-generic")
-    replica_count           = optional(number, 1)
-    gunicorn_workers        = optional(number, 1)
-    gunicorn_threads        = optional(number, 1)
-    ops_runner_thread_count = optional(number, 5)
-    publisher_thread_count  = optional(number, 2)
-    service_port            = optional(number, 8080)
-    container_port          = optional(number, 8080)
-    remote_upgradable       = optional(bool, true)
+    namespace     = optional(string, "mcd-agent")
+    image         = optional(string, "montecarlodata/agent:latest-generic")
+    replica_count = optional(number, 1)
   })
   default = {}
 }
@@ -117,13 +115,12 @@ variable "helm" {
     deploy_agent                      = optional(bool, true)
     install_external_secrets_operator = optional(bool, true)
     chart_repository                  = optional(string, "oci://registry-1.docker.io/montecarlodata")
-    chart_name                        = optional(string, "pre-release-generic-agent-helm")
-    chart_version                     = optional(string, "0.0.1")
-    service_annotations               = optional(map(string), {})
-    enabled_logs_collector            = optional(bool, true)
-    enabled_metrics_collector         = optional(bool, true)
+    chart_name                        = optional(string, "generic-agent-helm")
+    # Find the latest version at https://hub.docker.com/r/montecarlodata/generic-agent-helm/tags
+    chart_version             = string
+    enabled_logs_collector    = optional(bool, true)
+    enabled_metrics_collector = optional(bool, true)
   })
-  default = {}
 }
 
 variable "custom_values" {
