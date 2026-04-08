@@ -38,3 +38,6 @@ terraform.rc
 
 # Dependency lock file (not needed for modules)
 .terraform.lock.hcl
+
+# IDE
+.idea/
