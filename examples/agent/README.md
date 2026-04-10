@@ -10,10 +10,13 @@ This example deploys the Monte Carlo on-prem agent on a new GKE cluster with all
 
 ## Usage
 
-```bash
-terraform init
-terraform apply
-```
+1. Copy `credentials.tfvars.example` to `credentials.tfvars` and fill in your Monte Carlo credentials.
+
+2. Apply:
+   ```bash
+   terraform init
+   terraform apply -var-file=credentials.tfvars
+   ```
 
 ## After Deployment
 

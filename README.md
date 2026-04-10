@@ -9,11 +9,28 @@ This module deploys the [Monte Carlo](https://www.montecarlodata.com/) container
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) for cluster access
 - A Monte Carlo account with agent credentials (mcd_id and mcd_token)
 
+## Provider Configuration
+
+This module does **not** configure the `google` provider — the calling root module must do so. At minimum, set the target project and region:
+
+```hcl
+provider "google" {
+  project = "my-gcp-project"
+  region  = "us-central1"
+}
+```
+
+The module applies Monte Carlo agent labels to resources directly via the `custom_default_tags` variable — there is no need to set `default_labels` on the provider.
+
+> **Note:** The `helm` and `kubernetes` providers are configured inside the module because they depend on the cluster's kubeconfig, which is only available after the cluster is created. See the [Terraform provider documentation](https://developer.hashicorp.com/terraform/language/modules/develop/providers) for details on this pattern.
+
 ## Usage
 
 > **Finding your `backend_service_url`:** Navigate to the [Account Information](https://getmontecarlo.com/account-info#agent-service) page in Monte Carlo. Under the **Agent Service** section, copy the **Public endpoint**. Use this value for the `backend_service_url` variable in the examples below.
 
 > **Finding the latest `chart_version`:** Check the available versions on [Docker Hub](https://hub.docker.com/r/montecarlodata/generic-agent-helm/tags).
+
+All examples below require the `google` provider configured as described in [Provider Configuration](#provider-configuration).
 
 For more complete configurations, see the [`examples`](./examples/) directory.
 
@@ -25,9 +42,15 @@ You must configure the agent token secret using one of two options:
 
 ```hcl
 token_credentials = {
-  mcd_id    = "your-mcd-id"
-  mcd_token = "your-mcd-token"
+  mcd_id    = var.mcd_id
+  mcd_token = var.mcd_token
 }
+```
+
+To keep credentials out of your Terraform files, copy `credentials.tfvars.example` to `credentials.tfvars`, fill in your values, and apply with:
+
+```bash
+terraform apply -var-file=credentials.tfvars
 ```
 
 **Option 2 — Use a pre-existing secret:** Point the module to an existing secret in GCP Secret Manager by name. The secret value must be a JSON object with the following format:
@@ -49,6 +72,11 @@ token_secret = {
 ### Full deployment (new cluster)
 
 ```hcl
+provider "google" {
+  project = "my-gcp-project"
+  region  = "us-central1"
+}
+
 module "mcd_agent" {
   source = "monte-carlo-data/mcd-agent-k8s/google"
 
