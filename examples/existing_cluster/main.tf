@@ -1,3 +1,20 @@
+provider "google" {
+  project = "my-gcp-project"
+  region  = "us-central1"
+}
+
+variable "mcd_id" {
+  description = "Monte Carlo agent ID."
+  type        = string
+  sensitive   = true
+}
+
+variable "mcd_token" {
+  description = "Monte Carlo agent token."
+  type        = string
+  sensitive   = true
+}
+
 module "mcd_on_prem_agent" {
   source = "../../"
 
@@ -14,6 +31,11 @@ module "mcd_on_prem_agent" {
   # Use existing VPC network
   networking = {
     create_network = false
+  }
+
+  token_credentials = {
+    mcd_id    = var.mcd_id
+    mcd_token = var.mcd_token
   }
 
   helm = {

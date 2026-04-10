@@ -2,6 +2,11 @@ locals {
   mcd_agent_service_name    = "REMOTE_AGENT"
   mcd_agent_deployment_type = "TERRAFORM"
 
+  default_labels = merge(var.custom_default_tags, {
+    "mcd-agent-service-name"    = lower(local.mcd_agent_service_name)
+    "mcd-agent-deployment-type" = lower(local.mcd_agent_deployment_type)
+  })
+
   cluster_name           = var.cluster.name != null ? var.cluster.name : "mcd-agent-${random_id.mcd_agent_id.hex}"
   effective_cluster_name = var.cluster.create ? google_container_cluster.mcd_agent[0].name : var.cluster.existing_cluster_name
   namespace              = var.agent.namespace
@@ -82,6 +87,8 @@ resource "google_container_cluster" "mcd_agent" {
   location = var.location
   project  = var.project_id
 
+  resource_labels = local.default_labels
+
   enable_autopilot = var.cluster.enable_autopilot ? true : null
 
   # Standard mode: remove default node pool and manage separately
@@ -136,6 +143,7 @@ resource "google_storage_bucket" "mcd_agent_store" {
   project                     = var.project_id
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
+  labels                      = local.default_labels
 
   lifecycle_rule {
     condition {
@@ -220,6 +228,7 @@ resource "google_secret_manager_secret" "mcd_agent_token" {
   count     = var.token_secret.create ? 1 : 0
   secret_id = var.token_secret.name
   project   = var.project_id
+  labels    = local.default_labels
 
   replication {
     auto {}
