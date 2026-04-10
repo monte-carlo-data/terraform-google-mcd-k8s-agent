@@ -5,7 +5,7 @@ output "cluster_name" {
 
 output "cluster_endpoint" {
   description = "Endpoint for GKE control plane."
-  value       = var.cluster.create ? google_container_cluster.mcd_agent[0].endpoint : null
+  value       = var.cluster.create ? "https://${google_container_cluster.mcd_agent[0].endpoint}" : null
 }
 
 output "project_id" {
