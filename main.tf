@@ -99,7 +99,7 @@ resource "google_container_cluster" "mcd_agent" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
-  deletion_protection = false
+  deletion_protection = var.cluster.deletion_protection
 
   depends_on = [google_project_service.container_api]
 }
@@ -179,23 +179,31 @@ resource "google_service_account" "mcd_agent_sa" {
 }
 
 resource "google_storage_bucket_iam_member" "mcd_agent_storage_admin" {
-  count  = var.storage.create_bucket ? 1 : 0
-  bucket = google_storage_bucket.mcd_agent_store[0].name
+  bucket = local.effective_bucket_name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
 }
 
 resource "google_storage_bucket_iam_member" "mcd_agent_bucket_viewer" {
-  count  = var.storage.create_bucket ? 1 : 0
-  bucket = google_storage_bucket.mcd_agent_store[0].name
+  bucket = local.effective_bucket_name
   role   = "roles/storage.legacyBucketReader"
   member = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
 }
 
-resource "google_project_iam_member" "mcd_agent_secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
+resource "google_secret_manager_secret_iam_member" "mcd_agent_token_accessor" {
+  count     = var.token_secret.create ? 1 : 0
+  secret_id = google_secret_manager_secret.mcd_agent_token[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
+  project   = var.project_id
+}
+
+resource "google_secret_manager_secret_iam_member" "mcd_agent_integration_secret_accessor" {
+  count     = length(var.integration_secrets)
+  secret_id = var.integration_secrets[count.index].remote_ref_key
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
+  project   = var.project_id
 }
 
 resource "google_service_account_iam_member" "mcd_agent_workload_identity" {
@@ -224,8 +232,8 @@ resource "google_secret_manager_secret_version" "mcd_agent_token_version" {
   count  = var.token_secret.create ? 1 : 0
   secret = google_secret_manager_secret.mcd_agent_token[0].id
   secret_data = jsonencode({
-    "mcd_id"    = coalesce(var.token_credentials.mcd_id, "")
-    "mcd_token" = coalesce(var.token_credentials.mcd_token, "")
+    "mcd_id"    = var.token_credentials.mcd_id != null ? var.token_credentials.mcd_id : ""
+    "mcd_token" = var.token_credentials.mcd_token != null ? var.token_credentials.mcd_token : ""
   })
 }
 
@@ -303,6 +311,7 @@ locals {
     }
 
     serviceAccount = {
+      name = local.service_account_name
       annotations = {
         "iam.gke.io/gcp-service-account" = google_service_account.mcd_agent_sa.email
       }

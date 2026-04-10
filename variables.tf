@@ -25,6 +25,7 @@ variable "cluster" {
     existing_cluster_name = optional(string, null)
     release_channel       = optional(string, "REGULAR")
     enable_autopilot      = optional(bool, false)
+    deletion_protection   = optional(bool, true)
     machine_type          = optional(string, "e2-standard-2")
     node_count            = optional(number, 2)
   })
