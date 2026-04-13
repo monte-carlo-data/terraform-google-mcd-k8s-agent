@@ -35,3 +35,13 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# Dependency lock file (not needed for modules)
+.terraform.lock.hcl
+
+# IDE
+.idea/
+
+# Claude Code
+.claude/scheduled_tasks.lock
+.work/
