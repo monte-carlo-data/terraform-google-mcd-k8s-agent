@@ -44,3 +44,4 @@ terraform.rc
 
 # Claude Code
 .claude/scheduled_tasks.lock
+.work/

@@ -206,6 +206,14 @@ resource "google_secret_manager_secret_iam_member" "mcd_agent_token_accessor" {
   project   = var.project_id
 }
 
+resource "google_secret_manager_secret_iam_member" "mcd_agent_existing_token_accessor" {
+  count     = var.token_secret.create ? 0 : 1
+  secret_id = var.token_secret.name
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
+  project   = var.project_id
+}
+
 resource "google_secret_manager_secret_iam_member" "mcd_agent_integration_secret_accessor" {
   count     = length(var.integration_secrets)
   secret_id = var.integration_secrets[count.index].remote_ref_key
