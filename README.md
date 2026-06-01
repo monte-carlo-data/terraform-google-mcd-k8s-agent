@@ -7,7 +7,7 @@ This module deploys the [Monte Carlo](https://www.montecarlodata.com/) container
 - [Terraform](https://www.terraform.io/downloads.html) >= 1.9
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install) with [authentication](https://registry.terraform.io/providers/hashicorp/google/latest/docs/guides/getting_started)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) for cluster access
-- A Monte Carlo account with agent credentials (mcd_id and mcd_token)
+- A Monte Carlo account with agent credentials (key/token pair **or** OAuth client credentials)
 
 ## Provider Configuration
 
@@ -34,11 +34,13 @@ All examples below require the `google` provider configured as described in [Pro
 
 For more complete configurations, see the [`examples`](./examples/) directory.
 
-### Agent token secret
+### Authentication
 
-You must configure the agent token secret using one of two options:
+The module supports two authentication methods. Use **one** of them -- not both.
 
-**Option 1 — Provide credentials (recommended):** The module creates and populates the secret in GCP Secret Manager.
+#### Option A -- Key/token authentication
+
+**Provide credentials (recommended):** The module creates and populates the secret in GCP Secret Manager.
 
 ```hcl
 token_credentials = {
@@ -53,7 +55,7 @@ To keep credentials out of your Terraform files, copy `credentials.tfvars.exampl
 terraform apply -var-file=credentials.tfvars
 ```
 
-**Option 2 — Use a pre-existing secret:** Point the module to an existing secret in GCP Secret Manager by name. The secret value must be a JSON object with the following format:
+**Use a pre-existing secret:** Point the module to an existing secret in GCP Secret Manager by name. The secret value must be a JSON object with the following format:
 
 ```json
 {
@@ -66,6 +68,39 @@ terraform apply -var-file=credentials.tfvars
 token_secret = {
   create = false
   name   = "my-existing-secret-name"
+}
+```
+
+#### Option B -- OAuth 2.0 Client Credentials
+
+**Provide OAuth credentials:** The module creates a secret in GCP Secret Manager and configures the Helm chart to use OAuth (`oauthSecret`) instead of key/token (`tokenSecret`).
+
+```hcl
+oauth_credentials = {
+  client_id     = var.oauth_client_id
+  client_secret = var.oauth_client_secret
+}
+```
+
+To override the token endpoint (only needed for non-standard setups):
+
+```hcl
+oauth_token_endpoint = "https://custom-auth.example.com/oauth/token"
+```
+
+**Use a pre-existing OAuth secret:** Point the module to an existing secret in GCP Secret Manager. The secret value must be a JSON object with the following format:
+
+```json
+{
+  "client_id": "YOUR_CLIENT_ID",
+  "client_secret": "YOUR_CLIENT_SECRET"
+}
+```
+
+```hcl
+oauth_secret = {
+  create = false
+  name   = "my-existing-oauth-secret"
 }
 ```
 
@@ -211,6 +246,26 @@ kubectl exec -n mcd-agent deploy/mcd-agent-deployment -- \
    kubectl rollout restart daemonset logs-collector metrics-collector -n mcd-agent
    ```
 
+### Rotating OAuth credentials
+
+1. Update the secret in GCP Secret Manager:
+   ```bash
+   echo -n '{"client_id":"NEW_CLIENT_ID","client_secret":"NEW_CLIENT_SECRET"}' | \
+     gcloud secrets versions add mcd-agent-oauth --data-file=-
+   ```
+
+2. Force sync the Kubernetes secret from ESO:
+   ```bash
+   kubectl annotate externalsecret -n mcd-agent --all \
+     force-sync=$(date +%s) --overwrite
+   ```
+
+3. Restart the agent services:
+   ```bash
+   kubectl rollout restart deployment mcd-agent-deployment -n mcd-agent
+   kubectl rollout restart daemonset logs-collector metrics-collector -n mcd-agent
+   ```
+
 ## Outputs
 
 | Name | Description |
@@ -223,6 +278,7 @@ kubectl exec -n mcd-agent deploy/mcd-agent-deployment -- \
 | service_account_email | Service account email for the agent |
 | namespace | Kubernetes namespace for the agent |
 | helm_values | Helm values for manual deployment (sensitive) |
+| oauth_secret_name | Name of the Secret Manager secret for OAuth credentials |
 
 ## Releases and Development
 
