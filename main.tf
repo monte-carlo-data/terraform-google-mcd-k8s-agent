@@ -7,9 +7,9 @@ locals {
     "mcd-agent-deployment-type" = lower(local.mcd_agent_deployment_type)
   })
 
-  use_existing_oauth_secret = !var.oauth_secret.create
-  create_oauth_secret       = var.oauth_credentials != null && var.oauth_secret.create
-  use_oauth                 = var.oauth_credentials != null || local.use_existing_oauth_secret
+  use_oauth           = var.oauth_credentials != null || var.oauth_secret != null
+  create_oauth_secret = var.oauth_credentials != null && (var.oauth_secret == null || var.oauth_secret.create)
+  oauth_secret_name   = var.oauth_secret != null ? var.oauth_secret.name : "mcd-agent-oauth"
 
   cluster_name           = var.cluster.name != null ? var.cluster.name : "mcd-agent-${random_id.mcd_agent_id.hex}"
   effective_cluster_name = var.cluster.create ? google_container_cluster.mcd_agent[0].name : var.cluster.existing_cluster_name
@@ -238,8 +238,8 @@ resource "google_secret_manager_secret_iam_member" "mcd_agent_oauth_accessor" {
 }
 
 resource "google_secret_manager_secret_iam_member" "mcd_agent_existing_oauth_accessor" {
-  count     = local.use_existing_oauth_secret ? 1 : 0
-  secret_id = var.oauth_secret.name
+  count     = local.use_oauth && !local.create_oauth_secret ? 1 : 0
+  secret_id = local.oauth_secret_name
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
   project   = var.project_id
@@ -287,7 +287,7 @@ resource "google_secret_manager_secret_version" "mcd_agent_token_version" {
 
 resource "google_secret_manager_secret" "mcd_agent_oauth" {
   count     = local.create_oauth_secret ? 1 : 0
-  secret_id = var.oauth_secret.name
+  secret_id = local.oauth_secret_name
   project   = var.project_id
   labels    = local.default_labels
 
@@ -418,7 +418,7 @@ locals {
   auth_helm_values = local.use_oauth ? {
     oauthSecret = {
       remoteRef = {
-        key = var.oauth_secret.name
+        key = local.oauth_secret_name
       }
     }
     } : {
