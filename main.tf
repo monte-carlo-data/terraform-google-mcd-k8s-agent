@@ -7,6 +7,10 @@ locals {
     "mcd-agent-deployment-type" = lower(local.mcd_agent_deployment_type)
   })
 
+  use_oauth           = var.oauth_credentials != null || var.oauth_secret != null
+  create_oauth_secret = var.oauth_credentials != null && (var.oauth_secret == null || var.oauth_secret.create)
+  oauth_secret_name   = var.oauth_secret != null ? var.oauth_secret.name : "mcd-agent-oauth"
+
   cluster_name           = var.cluster.name != null ? var.cluster.name : "mcd-agent-${random_id.mcd_agent_id.hex}"
   effective_cluster_name = var.cluster.create ? google_container_cluster.mcd_agent[0].name : var.cluster.existing_cluster_name
   namespace              = var.agent.namespace
@@ -184,6 +188,17 @@ resource "google_service_account" "mcd_agent_sa" {
   account_id   = "mcd-agent-sa-${random_id.mcd_agent_id.hex}"
   display_name = "MCD Agent Service Account"
   project      = var.project_id
+
+  lifecycle {
+    precondition {
+      condition     = var.oauth_credentials == null || (var.token_credentials.mcd_id == null && var.token_credentials.mcd_token == null)
+      error_message = "Only one of oauth_credentials or token_credentials should be set, not both."
+    }
+    precondition {
+      condition     = var.oauth_credentials != null || !var.token_secret.create || (var.token_credentials.mcd_id != null && var.token_credentials.mcd_token != null)
+      error_message = "Both mcd_id and mcd_token are required in token_credentials when token_secret.create is true and oauth_credentials is not set."
+    }
+  }
 }
 
 resource "google_storage_bucket_iam_member" "mcd_agent_storage_admin" {
@@ -199,7 +214,7 @@ resource "google_storage_bucket_iam_member" "mcd_agent_bucket_viewer" {
 }
 
 resource "google_secret_manager_secret_iam_member" "mcd_agent_token_accessor" {
-  count     = var.token_secret.create ? 1 : 0
+  count     = !local.use_oauth && var.token_secret.create ? 1 : 0
   secret_id = google_secret_manager_secret.mcd_agent_token[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
@@ -207,8 +222,24 @@ resource "google_secret_manager_secret_iam_member" "mcd_agent_token_accessor" {
 }
 
 resource "google_secret_manager_secret_iam_member" "mcd_agent_existing_token_accessor" {
-  count     = var.token_secret.create ? 0 : 1
+  count     = !local.use_oauth && !var.token_secret.create ? 1 : 0
   secret_id = var.token_secret.name
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
+  project   = var.project_id
+}
+
+resource "google_secret_manager_secret_iam_member" "mcd_agent_oauth_accessor" {
+  count     = local.create_oauth_secret ? 1 : 0
+  secret_id = google_secret_manager_secret.mcd_agent_oauth[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
+  project   = var.project_id
+}
+
+resource "google_secret_manager_secret_iam_member" "mcd_agent_existing_oauth_accessor" {
+  count     = local.use_oauth && !local.create_oauth_secret ? 1 : 0
+  secret_id = local.oauth_secret_name
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.mcd_agent_sa.email}"
   project   = var.project_id
@@ -233,7 +264,7 @@ resource "google_service_account_iam_member" "mcd_agent_workload_identity" {
 # -----------------------------------------------------------------------------
 
 resource "google_secret_manager_secret" "mcd_agent_token" {
-  count     = var.token_secret.create ? 1 : 0
+  count     = !local.use_oauth && var.token_secret.create ? 1 : 0
   secret_id = var.token_secret.name
   project   = var.project_id
   labels    = local.default_labels
@@ -246,11 +277,33 @@ resource "google_secret_manager_secret" "mcd_agent_token" {
 }
 
 resource "google_secret_manager_secret_version" "mcd_agent_token_version" {
-  count  = var.token_secret.create ? 1 : 0
+  count  = !local.use_oauth && var.token_secret.create ? 1 : 0
   secret = google_secret_manager_secret.mcd_agent_token[0].id
   secret_data = jsonencode({
     "mcd_id"    = var.token_credentials.mcd_id != null ? var.token_credentials.mcd_id : ""
     "mcd_token" = var.token_credentials.mcd_token != null ? var.token_credentials.mcd_token : ""
+  })
+}
+
+resource "google_secret_manager_secret" "mcd_agent_oauth" {
+  count     = local.create_oauth_secret ? 1 : 0
+  secret_id = local.oauth_secret_name
+  project   = var.project_id
+  labels    = local.default_labels
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager_api]
+}
+
+resource "google_secret_manager_secret_version" "mcd_agent_oauth_version" {
+  count  = local.create_oauth_secret ? 1 : 0
+  secret = google_secret_manager_secret.mcd_agent_oauth[0].id
+  secret_data = jsonencode({
+    "client_id"     = var.oauth_credentials.client_id
+    "client_secret" = var.oauth_credentials.client_secret
   })
 }
 
@@ -349,12 +402,6 @@ locals {
       }
     }
 
-    tokenSecret = {
-      remoteRef = {
-        key = var.token_secret.name
-      }
-    }
-
     integrationsSecrets = {
       data = [for s in var.integration_secrets : {
         secretKey = s.secret_key
@@ -368,7 +415,21 @@ locals {
     metricsCollector = { enabled = var.helm.enabled_metrics_collector }
   }
 
-  helm_values = merge(local.base_helm_values, var.custom_values, {
+  auth_helm_values = local.use_oauth ? {
+    oauthSecret = {
+      remoteRef = {
+        key = local.oauth_secret_name
+      }
+    }
+    } : {
+    tokenSecret = {
+      remoteRef = {
+        key = var.token_secret.name
+      }
+    }
+  }
+
+  helm_values = merge(local.base_helm_values, local.auth_helm_values, var.custom_values, {
     logShipping = var.helm.log_shipping
     metricsCollector = merge(
       try(var.custom_values.metricsCollector, {}),
