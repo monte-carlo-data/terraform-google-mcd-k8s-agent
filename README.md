@@ -82,12 +82,6 @@ oauth_credentials = {
 }
 ```
 
-To override the token endpoint (only needed for non-standard setups):
-
-```hcl
-oauth_token_endpoint = "https://custom-auth.example.com/oauth/token"
-```
-
 **Use a pre-existing OAuth secret:** Point the module to an existing secret in GCP Secret Manager. The secret value must be a JSON object with the following format:
 
 ```json
