@@ -187,6 +187,17 @@ resource "google_service_account" "mcd_agent_sa" {
   account_id   = "mcd-agent-sa-${random_id.mcd_agent_id.hex}"
   display_name = "MCD Agent Service Account"
   project      = var.project_id
+
+  lifecycle {
+    precondition {
+      condition     = var.oauth_credentials == null || (var.token_credentials.mcd_id == null && var.token_credentials.mcd_token == null)
+      error_message = "Only one of oauth_credentials or token_credentials should be set, not both."
+    }
+    precondition {
+      condition     = var.oauth_credentials != null || !var.token_secret.create || (var.token_credentials.mcd_id != null && var.token_credentials.mcd_token != null)
+      error_message = "Both mcd_id and mcd_token are required in token_credentials when token_secret.create is true and oauth_credentials is not set."
+    }
+  }
 }
 
 resource "google_storage_bucket_iam_member" "mcd_agent_storage_admin" {

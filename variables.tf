@@ -80,11 +80,6 @@ variable "token_credentials" {
   })
   sensitive = true
   default   = {}
-
-  validation {
-    condition     = var.oauth_credentials != null || !var.token_secret.create || (var.token_credentials.mcd_id != null && var.token_credentials.mcd_token != null)
-    error_message = "Both mcd_id and mcd_token are required in token_credentials when token_secret.create is true and oauth_credentials is not set."
-  }
 }
 
 variable "oauth_credentials" {
@@ -95,11 +90,6 @@ variable "oauth_credentials" {
   })
   default   = null
   sensitive = true
-
-  validation {
-    condition     = var.oauth_credentials == null || (var.token_credentials.mcd_id == null && var.token_credentials.mcd_token == null)
-    error_message = "Only one of oauth_credentials or token_credentials should be set, not both."
-  }
 }
 
 variable "oauth_secret" {
