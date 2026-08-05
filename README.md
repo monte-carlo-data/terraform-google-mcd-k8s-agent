@@ -193,6 +193,42 @@ output "helm_values" {
 }
 ```
 
+### Scaling
+
+Set replicas, per-replica concurrency, and pod resources through the `agent` variable:
+
+```hcl
+  agent = {
+    replica_count           = 3
+    ops_runner_thread_count = 36
+    resources = {
+      requests = { cpu = "500m", memory = "512Mi" }
+      limits   = { cpu = "2", memory = "2Gi" }
+    }
+  }
+```
+
+`ops_runner_thread_count` is the number of operations a single replica processes concurrently (chart default is 18). Raising it is often cheaper than adding replicas, but set `resources` alongside it so the pods have headroom.
+
+To autoscale instead of holding a fixed replica count, supply `agent.autoscaling`:
+
+```hcl
+  agent = {
+    ops_runner_thread_count = 36
+    resources               = { requests = { cpu = "500m", memory = "512Mi" } }
+
+    autoscaling = {
+      min_replicas                      = 2
+      max_replicas                      = 6
+      target_cpu_utilization_percentage = 70
+    }
+  }
+```
+
+Supplying the object enables autoscaling; set `enabled = false` to keep the settings without activating the HorizontalPodAutoscaler. When enabled, `replica_count` is ignored, `resources.requests` is required (the HPA uses requests as its utilization baseline, and the module validates this), and `metrics-server` must be installed in the cluster — standard on EKS, AKS, and GKE.
+
+Set these through the `agent` variable rather than `custom_values`. `custom_values` replaces whole sections rather than merging into them, so a `container` map passed there drops the module's backend URL and data store settings.
+
 ## After Deployment
 
 Configure kubectl access:
