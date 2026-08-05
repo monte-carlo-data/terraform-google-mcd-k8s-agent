@@ -364,6 +364,29 @@ resource "helm_release" "mcd_agent" {
 }
 
 locals {
+  # Optional container tuning. Each key is omitted from the rendered values
+  # entirely when its variable is unset, so the chart's own defaults apply.
+  agent_container_tuning = merge(
+    var.agent.ops_runner_thread_count == null ? {} : {
+      opsRunnerThreadCount = tostring(var.agent.ops_runner_thread_count)
+    },
+    var.agent.resources == null ? {} : {
+      resources = var.agent.resources
+    },
+  )
+
+  # Rendered only when agent.autoscaling is supplied, so deployments that don't
+  # use it are unaffected.
+  agent_autoscaling_values = var.agent.autoscaling == null ? {} : {
+    autoscaling = {
+      enabled                           = var.agent.autoscaling.enabled
+      minReplicas                       = var.agent.autoscaling.min_replicas
+      maxReplicas                       = var.agent.autoscaling.max_replicas
+      targetCPUUtilizationPercentage    = var.agent.autoscaling.target_cpu_utilization_percentage
+      targetMemoryUtilizationPercentage = var.agent.autoscaling.target_memory_utilization_percentage
+    }
+  }
+
   base_helm_values = {
     namespace    = local.namespace
     replicaCount = var.agent.replica_count
@@ -374,11 +397,14 @@ locals {
       tag        = length(split(":", var.agent.image)) > 1 ? split(":", var.agent.image)[1] : "latest-generic"
     }
 
-    container = {
-      backendServiceUrl = var.backend_service_url
-      storageBucketName = local.effective_bucket_name
-      storageType       = "GCS"
-    }
+    container = merge(
+      {
+        backendServiceUrl = var.backend_service_url
+        storageBucketName = local.effective_bucket_name
+        storageType       = "GCS"
+      },
+      local.agent_container_tuning,
+    )
 
     serviceAccount = {
       name = local.service_account_name
@@ -429,7 +455,7 @@ locals {
     }
   }
 
-  helm_values = merge(local.base_helm_values, local.auth_helm_values, var.custom_values, {
+  helm_values = merge(local.base_helm_values, local.agent_autoscaling_values, local.auth_helm_values, var.custom_values, {
     logShipping = var.helm.log_shipping
     metricsCollector = merge(
       try(var.custom_values.metricsCollector, {}),
