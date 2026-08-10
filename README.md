@@ -4,7 +4,7 @@ This module deploys the [Monte Carlo](https://www.montecarlodata.com/) container
 
 ## Prerequisites
 
-- [Terraform](https://www.terraform.io/downloads.html) >= 1.9
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.12
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install) with [authentication](https://registry.terraform.io/providers/hashicorp/google/latest/docs/guides/getting_started)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) for cluster access
 - A Monte Carlo account with agent credentials (key/token pair **or** OAuth client credentials)
